@@ -225,7 +225,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [editingVideos, setEditingVideos] = useState(highlightVideos);
   const [editingMusic, setEditingMusic] = useState(backgroundMusic);
   const [editingEvents, setEditingEvents] = useState(events);
-  const [showTeamMembers, setShowTeamMembers] = useState(true);
 
   // Sync editing states with context data when it changes
   useEffect(() => {
@@ -1137,8 +1136,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
                     </div>
                   </div>
                   
-                  {showTeamMembers && (
-                    <div className="space-y-4">
+                  <div className="space-y-4">
                       {editingTeam && editingTeam.length > 0 ? (
                         editingTeam.map((member, index) => (
                           <Card key={member.id}>
@@ -1310,7 +1308,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
                     </div>
                   )}
                     </div>
-                  )}
                 </div>
               )}
               
