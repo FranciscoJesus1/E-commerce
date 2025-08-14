@@ -30,6 +30,11 @@ interface PlayerData {
   showGallerySection: boolean;
   showVideosSection: boolean;
   showEventsSection: boolean;
+  // Campos editables del perfil profesional
+  profileTitle: string;
+  profileSubtitle: string;
+  profileDescription: string;
+  profileSkills: string[];
 }
 
 interface DuoPartner {
@@ -166,7 +171,17 @@ export const AdminProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     showDuoSection: true,
     showGallerySection: true,
     showVideosSection: true,
-    showEventsSection: true
+    showEventsSection: true,
+    // Campos editables del perfil profesional
+    profileTitle: 'Perfil Profesional',
+    profileSubtitle: 'Conoce mi estilo de juego, fortalezas y experiencia competitiva.',
+    profileDescription: 'Soy un duelista agresivo especializado en aperturas limpias y control de espacio. Mi experiencia abarca desde ranked hasta torneos profesionales, adaptándome a diferentes composiciones con Phoenix, Reyna, Jett y Raze según las necesidades del equipo.',
+    profileSkills: [
+      'Liderazgo táctico en situaciones de mid-round y lecturas de rotación',
+      'Entrenamiento diario de aim con rutinas especializadas en Kovaak y Aimlabs',
+      'Comunicación efectiva y mantener la calma en situaciones de clutch',
+      'Análisis de demos y adaptación constante al meta competitivo'
+    ]
   });
   
   const [duoPartner, setDuoPartner] = useState<DuoPartner | null>({
