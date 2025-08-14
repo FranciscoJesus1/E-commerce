@@ -756,6 +756,91 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
                     />
                   </div>
                   
+                  {/* Perfil Profesional */}
+                  <div className="border-t pt-6">
+                    <h4 className="text-lg font-semibold mb-4">Perfil Profesional</h4>
+                    
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Título del Perfil</label>
+                        <input
+                          type="text"
+                          value={editingPlayer.profileTitle || ''}
+                           onChange={(e) => setEditingPlayer({ ...editingPlayer, profileTitle: e.target.value })}
+                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                          placeholder="Ej: Perfil Profesional"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Subtítulo del Perfil</label>
+                        <input
+                          type="text"
+                          value={editingPlayer.profileSubtitle || ''}
+                           onChange={(e) => setEditingPlayer({ ...editingPlayer, profileSubtitle: e.target.value })}
+                           className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                           placeholder="Ej: Conoce mi estilo de juego, fortalezas y experiencia competitiva."
+                         />
+                       </div>
+                       
+                       <div>
+                         <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Descripción del Perfil</label>
+                         <textarea
+                           value={editingPlayer.profileDescription || ''}
+                           onChange={(e) => setEditingPlayer({ ...editingPlayer, profileDescription: e.target.value })}
+                           rows={4}
+                           className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                           placeholder="Describe tu estilo de juego y experiencia..."
+                         />
+                       </div>
+                       
+                       <div>
+                         <div className="flex items-center justify-between mb-4">
+                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Habilidades</label>
+                           <Button
+                             onClick={() => {
+                               const newSkills = [...(editingPlayer.profileSkills || []), ''];
+                               setEditingPlayer({ ...editingPlayer, profileSkills: newSkills });
+                             }}
+                             size="sm"
+                             variant="outline"
+                           >
+                             <Plus className="w-4 h-4 mr-2" />
+                             Agregar Habilidad
+                           </Button>
+                         </div>
+                         <div className="space-y-2">
+                           {(editingPlayer.profileSkills || []).map((skill, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={skill}
+                                onChange={(e) => {
+                                  const newSkills = [...editingPlayer.profileSkills];
+                                  newSkills[index] = e.target.value;
+                                  setEditingPlayer({ ...editingPlayer, profileSkills: newSkills });
+                                }}
+                                className="flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-600"
+                                placeholder="Describe una habilidad o fortaleza..."
+                              />
+                              <Button
+                                onClick={() => {
+                                   const newSkills = (editingPlayer.profileSkills || []).filter((_, i) => i !== index);
+                                   setEditingPlayer({ ...editingPlayer, profileSkills: newSkills });
+                                 }}
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div className="grid grid-cols-4 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">K/D</label>
