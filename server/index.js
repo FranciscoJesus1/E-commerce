@@ -94,6 +94,18 @@ const SettingsSchema = new mongoose.Schema({
   isDarkMode: Boolean
 }, { timestamps: true });
 
+const WebhookSchema = new mongoose.Schema({
+  url: { type: String, required: true },
+  isActive: { type: Boolean, default: true },
+  backupData: {
+    url: String,
+    timestamp: Number,
+    created: String
+  },
+  recoveryCode: String,
+  configExport: String
+}, { timestamps: true });
+
 // Models
 const PlayerData = mongoose.model('PlayerData', PlayerDataSchema);
 const DuoPartner = mongoose.model('DuoPartner', DuoPartnerSchema);
@@ -103,6 +115,7 @@ const HighlightVideo = mongoose.model('HighlightVideo', HighlightVideoSchema);
 const Event = mongoose.model('Event', EventSchema);
 const BackgroundMusic = mongoose.model('BackgroundMusic', BackgroundMusicSchema);
 const Settings = mongoose.model('Settings', SettingsSchema);
+const Webhook = mongoose.model('Webhook', WebhookSchema);
 
 // Routes
 
@@ -265,6 +278,54 @@ app.post('/api/settings', async (req, res) => {
     const settings = new Settings(req.body);
     await settings.save();
     res.json(settings);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Webhook
+app.get('/api/webhook', async (req, res) => {
+  try {
+    const webhook = await Webhook.findOne({ isActive: true }).sort({ createdAt: -1 });
+    res.json(webhook || {});
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/webhook', async (req, res) => {
+  try {
+    // Desactivar webhooks anteriores
+    await Webhook.updateMany({}, { isActive: false });
+    
+    const webhook = new Webhook({
+      ...req.body,
+      isActive: true
+    });
+    await webhook.save();
+    res.json(webhook);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/webhook/:id', async (req, res) => {
+  try {
+    const webhook = await Webhook.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+    res.json(webhook);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/webhook', async (req, res) => {
+  try {
+    await Webhook.deleteMany({});
+    res.json({ message: 'Todos los webhooks eliminados' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
