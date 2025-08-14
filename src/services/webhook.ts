@@ -15,23 +15,62 @@ interface DiscordWebhookPayload {
 
 class WebhookService {
   private webhookUrl: string;
-  private static readonly WEBHOOK_STORAGE_KEY = 'discord-webhook-url';
-  private static readonly WEBHOOK_BACKUP_KEY = 'discord-webhook-backup';
-  private static readonly RECOVERY_CODE_KEY = 'webhook-recovery-code';
-  private static readonly CONFIG_EXPORT_KEY = 'webhook-config-export';
+  private webhookId: string | null;
+  private static readonly API_BASE_URL = 'http://localhost:3001/api';
 
   constructor() {
-    // URL del webhook de Discord - debe ser configurada por el usuario
-    this.webhookUrl = localStorage.getItem(WebhookService.WEBHOOK_STORAGE_KEY) || '';
+    this.webhookUrl = '';
+    this.webhookId = null;
+    this.loadWebhookFromDatabase();
   }
 
-  setWebhookUrl(url: string, createBackup: boolean = true) {
-    this.webhookUrl = url;
-    localStorage.setItem(WebhookService.WEBHOOK_STORAGE_KEY, url);
-    
-    // Crear backup automático si es la primera vez o si se solicita explícitamente
-    if (createBackup && url) {
-      this.createBackup(url);
+  private async loadWebhookFromDatabase() {
+    try {
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`);
+      if (response.ok) {
+        const webhook = await response.json();
+        if (webhook.url) {
+          this.webhookUrl = webhook.url;
+          this.webhookId = webhook._id;
+        }
+      }
+    } catch (error) {
+      console.error('Error loading webhook from database:', error);
+    }
+  }
+
+  async setWebhookUrl(url: string, createBackup: boolean = true): Promise<boolean> {
+    try {
+      const webhookData = {
+        url,
+        isActive: true,
+        ...(createBackup && {
+          backupData: {
+            url,
+            timestamp: Date.now(),
+            created: new Date().toISOString()
+          }
+        })
+      };
+
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookData)
+      });
+
+      if (response.ok) {
+        const savedWebhook = await response.json();
+        this.webhookUrl = url;
+        this.webhookId = savedWebhook._id;
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error saving webhook to database:', error);
+      return false;
     }
   }
 
@@ -39,43 +78,40 @@ class WebhookService {
     return this.webhookUrl;
   }
 
-  // Crear backup del webhook
-  private createBackup(url: string) {
-    const backupData = {
-      url,
-      timestamp: Date.now(),
-      created: new Date().toISOString()
-    };
-    localStorage.setItem(WebhookService.WEBHOOK_BACKUP_KEY, JSON.stringify(backupData));
-  }
-
   // Recuperar webhook desde backup
-  recoverWebhookFromBackup(): string | null {
-    const backup = localStorage.getItem(WebhookService.WEBHOOK_BACKUP_KEY);
-    if (!backup) return null;
-
+  async recoverWebhookFromBackup(): Promise<string | null> {
     try {
-      const backupData = JSON.parse(backup);
-      return backupData.url || null;
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`);
+      if (response.ok) {
+        const webhook = await response.json();
+        if (webhook.backupData && webhook.backupData.url) {
+          return webhook.backupData.url;
+        }
+      }
+      return null;
     } catch (error) {
-      console.error('Error parsing webhook backup:', error);
+      console.error('Error recovering webhook from backup:', error);
       return null;
     }
   }
 
   // Obtener información del backup
-  getBackupInfo(): { hasBackup: boolean; created?: string; url?: string } {
-    const backup = localStorage.getItem(WebhookService.WEBHOOK_BACKUP_KEY);
-    if (!backup) return { hasBackup: false };
-
+  async getBackupInfo(): Promise<{ hasBackup: boolean; created?: string; url?: string }> {
     try {
-      const backupData = JSON.parse(backup);
-      return {
-        hasBackup: true,
-        created: backupData.created,
-        url: backupData.url ? `${backupData.url.substring(0, 50)}...` : undefined
-      };
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`);
+      if (response.ok) {
+        const webhook = await response.json();
+        if (webhook.backupData) {
+          return {
+            hasBackup: true,
+            created: webhook.backupData.created,
+            url: webhook.backupData.url ? `${webhook.backupData.url.substring(0, 50)}...` : undefined
+          };
+        }
+      }
+      return { hasBackup: false };
     } catch (error) {
+      console.error('Error getting backup info:', error);
       return { hasBackup: false };
     }
   }
@@ -86,121 +122,222 @@ class WebhookService {
   }
 
   // Limpiar configuración del webhook
-  clearWebhook() {
-    this.webhookUrl = '';
-    localStorage.removeItem(WebhookService.WEBHOOK_STORAGE_KEY);
+  async clearWebhook(): Promise<void> {
+    try {
+      if (this.webhookId) {
+        await fetch(`${WebhookService.API_BASE_URL}/webhook/${this.webhookId}`, {
+          method: 'DELETE'
+        });
+      }
+      this.webhookUrl = '';
+      this.webhookId = null;
+    } catch (error) {
+      console.error('Error clearing webhook:', error);
+      throw error;
+    }
   }
 
   // Generar código de recuperación de emergencia
-  generateRecoveryCode(): string {
-    const code = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  async generateRecoveryCode(): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new Error('Webhook no configurado');
+    }
+
     const recoveryData = {
-      code,
-      webhookUrl: this.webhookUrl,
-      created: new Date().toISOString(),
-      timestamp: Date.now()
+      url: this.webhookUrl,
+      timestamp: Date.now(),
+      created: new Date().toISOString()
     };
-    localStorage.setItem(WebhookService.RECOVERY_CODE_KEY, JSON.stringify(recoveryData));
+
+    const code = btoa(JSON.stringify(recoveryData)).replace(/[+/=]/g, (match) => {
+      switch (match) {
+        case '+': return '-';
+        case '/': return '_';
+        case '=': return '';
+        default: return match;
+      }
+    });
+
+    // Guardar código en la base de datos
+    if (this.webhookId) {
+      try {
+        await fetch(`${WebhookService.API_BASE_URL}/webhook/${this.webhookId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ recoveryCode: code })
+        });
+      } catch (error) {
+        console.error('Error saving recovery code:', error);
+      }
+    }
+
     return code;
   }
 
   // Recuperar webhook usando código de emergencia
-  recoverWithCode(code: string): boolean {
-    const recoveryData = localStorage.getItem(WebhookService.RECOVERY_CODE_KEY);
-    if (!recoveryData) return false;
-
+  async recoverWithCode(code: string): Promise<boolean> {
     try {
-      const data = JSON.parse(recoveryData);
-      if (data.code === code && data.webhookUrl) {
-        this.setWebhookUrl(data.webhookUrl, false);
-        return true;
+      // Restaurar caracteres base64
+      const base64Code = code.replace(/[-_]/g, (match) => {
+        return match === '-' ? '+' : '/';
+      });
+      
+      // Agregar padding si es necesario
+      const paddedCode = base64Code + '='.repeat((4 - base64Code.length % 4) % 4);
+      
+      const recoveryData = JSON.parse(atob(paddedCode));
+      
+      if (recoveryData.url && typeof recoveryData.url === 'string') {
+        const success = await this.setWebhookUrl(recoveryData.url, false);
+        return success;
       }
+      return false;
     } catch (error) {
       console.error('Error recovering with code:', error);
+      return false;
     }
-    return false;
   }
 
   // Exportar configuración completa
-  exportConfiguration(): string {
-    const config = {
-      webhookUrl: this.webhookUrl,
-      backup: localStorage.getItem(WebhookService.WEBHOOK_BACKUP_KEY),
-      recoveryCode: localStorage.getItem(WebhookService.RECOVERY_CODE_KEY),
-      exported: new Date().toISOString(),
-      timestamp: Date.now()
-    };
-    const exportData = btoa(JSON.stringify(config));
-    localStorage.setItem(WebhookService.CONFIG_EXPORT_KEY, exportData);
-    return exportData;
+  async exportConfiguration(): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new Error('Webhook no configurado');
+    }
+
+    try {
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`);
+      if (response.ok) {
+        const webhook = await response.json();
+        const exportData = {
+          webhookUrl: webhook.url,
+          backupData: webhook.backupData,
+          recoveryCode: webhook.recoveryCode,
+          exported: new Date().toISOString(),
+          version: '1.0'
+        };
+
+        const exportString = btoa(JSON.stringify(exportData));
+        
+        // Guardar configuración exportada en la base de datos
+        if (this.webhookId) {
+          await fetch(`${WebhookService.API_BASE_URL}/webhook/${this.webhookId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ configExport: exportString })
+          });
+        }
+        
+        return exportString;
+      }
+      throw new Error('No se pudo obtener la configuración del webhook');
+    } catch (error) {
+      console.error('Error exporting configuration:', error);
+      throw error;
+    }
   }
 
   // Importar configuración completa
-  importConfiguration(exportData: string): boolean {
+  async importConfiguration(importData: string): Promise<boolean> {
     try {
-      const config = JSON.parse(atob(exportData));
-      if (config.webhookUrl) {
-        this.setWebhookUrl(config.webhookUrl, false);
-        if (config.backup) {
-          localStorage.setItem(WebhookService.WEBHOOK_BACKUP_KEY, config.backup);
+      const configData = JSON.parse(atob(importData));
+      
+      if (configData.webhookUrl && configData.version) {
+        const success = await this.setWebhookUrl(configData.webhookUrl, false);
+        
+        if (success && this.webhookId) {
+          // Restaurar datos adicionales
+          const updateData: any = {};
+          
+          if (configData.backupData) {
+            updateData.backupData = configData.backupData;
+          }
+          
+          if (configData.recoveryCode) {
+            updateData.recoveryCode = configData.recoveryCode;
+          }
+          
+          if (Object.keys(updateData).length > 0) {
+            await fetch(`${WebhookService.API_BASE_URL}/webhook/${this.webhookId}`, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(updateData)
+            });
+          }
         }
-        if (config.recoveryCode) {
-          localStorage.setItem(WebhookService.RECOVERY_CODE_KEY, config.recoveryCode);
-        }
-        return true;
+        
+        return success;
       }
+      return false;
     } catch (error) {
       console.error('Error importing configuration:', error);
+      return false;
     }
-    return false;
   }
 
   // Obtener información de recuperación disponible
-  getRecoveryOptions(): {
+  async getRecoveryOptions(): Promise<{
     hasBackup: boolean;
     hasRecoveryCode: boolean;
     hasExportedConfig: boolean;
     backupDate?: string;
     recoveryCodeDate?: string;
     exportDate?: string;
-  } {
-    const backup = localStorage.getItem(WebhookService.WEBHOOK_BACKUP_KEY);
-    const recoveryCode = localStorage.getItem(WebhookService.RECOVERY_CODE_KEY);
-    const exportedConfig = localStorage.getItem(WebhookService.CONFIG_EXPORT_KEY);
-
-    const result = {
-      hasBackup: !!backup,
-      hasRecoveryCode: !!recoveryCode,
-      hasExportedConfig: !!exportedConfig
-    } as any;
-
+  }> {
     try {
-      if (backup) {
-        const backupData = JSON.parse(backup);
-        result.backupDate = backupData.created;
-      }
-      if (recoveryCode) {
-        const codeData = JSON.parse(recoveryCode);
-        result.recoveryCodeDate = codeData.created;
-      }
-      if (exportedConfig) {
-        const configData = JSON.parse(atob(exportedConfig));
-        result.exportDate = configData.exported;
+      const response = await fetch(`${WebhookService.API_BASE_URL}/webhook`);
+      if (response.ok) {
+        const webhook = await response.json();
+        
+        const result: any = {
+          hasBackup: !!(webhook.backupData && webhook.backupData.url),
+          hasRecoveryCode: !!webhook.recoveryCode,
+          hasExportedConfig: !!webhook.configExport
+        };
+
+        if (webhook.backupData && webhook.backupData.created) {
+          result.backupDate = webhook.backupData.created;
+        }
+        
+        if (webhook.configExport) {
+          try {
+            const configData = JSON.parse(atob(webhook.configExport));
+            result.exportDate = configData.exported;
+          } catch (error) {
+            console.error('Error parsing export date:', error);
+          }
+        }
+
+        return result;
       }
     } catch (error) {
-      console.error('Error parsing recovery options:', error);
+      console.error('Error getting recovery options:', error);
     }
-
-    return result;
+    
+    return {
+      hasBackup: false,
+      hasRecoveryCode: false,
+      hasExportedConfig: false
+    };
   }
 
   // Reset completo del sistema (último recurso)
-  emergencyReset(): void {
-    localStorage.removeItem(WebhookService.WEBHOOK_STORAGE_KEY);
-    localStorage.removeItem(WebhookService.WEBHOOK_BACKUP_KEY);
-    localStorage.removeItem(WebhookService.RECOVERY_CODE_KEY);
-    localStorage.removeItem(WebhookService.CONFIG_EXPORT_KEY);
-    this.webhookUrl = '';
+  async emergencyReset(): Promise<void> {
+    try {
+      await fetch(`${WebhookService.API_BASE_URL}/webhook`, {
+        method: 'DELETE'
+      });
+      this.webhookUrl = '';
+      this.webhookId = null;
+    } catch (error) {
+      console.error('Error during emergency reset:', error);
+      throw error;
+    }
   }
 
   async sendPasswordNotification(password: string): Promise<boolean> {
