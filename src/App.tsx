@@ -337,20 +337,22 @@ const ValorantPlayerPageContent = () => {
       </div>
 
       {/* PERFIL */}
-      <Section id="perfil" title="Perfil Profesional" subtitle="Conoce mi estilo de juego, fortalezas y experiencia competitiva.">
+      <Section id="perfil" title={playerData.profileTitle || 'Perfil Profesional'} subtitle={playerData.profileSubtitle || 'Conoce mi estilo de juego, fortalezas y experiencia competitiva.'}>
         <div className="grid lg:grid-cols-3 gap-8">
           <Card className="lg:col-span-2 hover:shadow-lg transition-all duration-300">
             <CardContent className="p-8 space-y-4">
               <p className="text-lg leading-relaxed">
-                Soy un duelista agresivo especializado en aperturas limpias y control de espacio. 
-                Mi experiencia abarca desde ranked hasta torneos profesionales, adaptándome a diferentes 
-                composiciones con Phoenix, Reyna, Jett y Raze según las necesidades del equipo.
+                {playerData.profileDescription || 'Soy un duelista agresivo especializado en aperturas limpias y control de espacio. Mi experiencia abarca desde ranked hasta torneos profesionales, adaptándome a diferentes composiciones con Phoenix, Reyna, Jett y Raze según las necesidades del equipo.'}
               </p>
               <ul className="list-disc pl-6 text-muted-foreground space-y-2">
-                <li>Liderazgo táctico en situaciones de mid-round y lecturas de rotación</li>
-                <li>Entrenamiento diario de aim con rutinas especializadas en Kovaak y Aimlabs</li>
-                <li>Comunicación efectiva y mantener la calma en situaciones de clutch</li>
-                <li>Análisis de demos y adaptación constante al meta competitivo</li>
+                {playerData.profileSkills?.map((skill, index) => (
+                  <li key={index}>{skill}</li>
+                )) || [
+                  <li key="default-1">Liderazgo táctico en situaciones de mid-round y lecturas de rotación</li>,
+                  <li key="default-2">Entrenamiento diario de aim con rutinas especializadas en Kovaak y Aimlabs</li>,
+                  <li key="default-3">Comunicación efectiva y mantener la calma en situaciones de clutch</li>,
+                  <li key="default-4">Análisis de demos y adaptación constante al meta competitivo</li>
+                ]}
               </ul>
             </CardContent>
           </Card>
