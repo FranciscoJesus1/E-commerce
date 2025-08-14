@@ -46,6 +46,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [recoveryCode, setRecoveryCode] = useState('');
   const [importData, setImportData] = useState('');
   const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState('');
+  const [isWebhookConfigured, setIsWebhookConfigured] = useState(false);
+  const [backupInfo, setBackupInfo] = useState<{hasBackup: boolean; created?: string}>({hasBackup: false});
 
   const handleLogin = () => {
     if (passwordManager.validatePassword(loginPassword)) {
@@ -57,7 +59,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const generateNewPassword = async () => {
-    const isConfigured = await webhookService.isConfigured();
+    const isConfigured = webhookService.isConfigured();
     if (!isConfigured) {
       setLoginError('Debe configurar el webhook de Discord primero');
       return;
@@ -123,8 +125,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
 
     try {
       // Temporalmente usar la URL para probar
-      const originalUrl = await webhookService.getWebhookUrl();
-      await webhookService.setWebhookUrl(urlToTest.trim(), false);
+      const originalUrl = webhookService.getWebhookUrl();
+        await webhookService.setWebhookUrl(tempWebhookUrl, false);
       const success = await webhookService.sendTestMessage();
       
       // Restaurar URL original si estamos en modo edición
@@ -172,7 +174,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const handleGenerateRecoveryCode = async () => {
-    const isConfigured = await webhookService.isConfigured();
+    const isConfigured = webhookService.isConfigured();
     if (!isConfigured) {
       setWebhookTestResult('❌ Debe configurar el webhook primero');
       setTimeout(() => setWebhookTestResult(null), 3000);
@@ -198,7 +200,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     try {
       const success = await webhookService.recoverWithCode(recoveryCode.trim());
       if (success) {
-        const currentUrl = await webhookService.getWebhookUrl();
+        const currentUrl = webhookService.getWebhookUrl();
         setWebhookUrl(currentUrl);
         setWebhookTestResult('✅ Webhook recuperado con código');
         setRecoveryCode('');
@@ -213,7 +215,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const handleExportConfig = async () => {
-    const isConfigured = await webhookService.isConfigured();
+    const isConfigured = webhookService.isConfigured();
     if (!isConfigured) {
       setWebhookTestResult('❌ Debe configurar el webhook primero');
       setTimeout(() => setWebhookTestResult(null), 3000);
@@ -243,7 +245,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     try {
       const success = await webhookService.importConfiguration(importData.trim());
       if (success) {
-        const currentUrl = await webhookService.getWebhookUrl();
+        const currentUrl = webhookService.getWebhookUrl();
         setWebhookUrl(currentUrl);
         setWebhookTestResult('✅ Configuración importada exitosamente');
         setImportData('');
@@ -313,16 +315,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     const loadWebhook = async () => {
       try {
-        // Initialize webhook service and load data
-// Initialize webhook service by loading initial data
-await webhookService.loadInitialData();
-        const currentUrl = await webhookService.getWebhookUrl();
+        // Get current webhook data
+        const currentUrl = webhookService.getWebhookUrl();
         setWebhookUrl(currentUrl);
         setTempWebhookUrl(currentUrl);
-        const isConfigured = await webhookService.isConfigured();
+        const isConfigured = webhookService.isConfigured();
+        setIsWebhookConfigured(isConfigured);
         setIsEditingWebhook(!isConfigured);
+        const backup = await webhookService.getBackupInfo();
+        setBackupInfo(backup);
       } catch (error) {
-        console.error('Error loading webhook from database:', error);
+        console.error('Error loading webhook data:', error);
       }
     };
     loadWebhook();
@@ -497,7 +500,7 @@ await webhookService.loadInitialData();
               <div className="mb-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Discord Webhook</h3>
-                  {!isEditingWebhook && webhookService.isConfigured() && (
+                  {!isEditingWebhook && isWebhookConfigured && (
                     <Button onClick={handleEditWebhook} size="sm" variant="ghost" className="text-xs">
                       <Edit3 className="w-3 h-3 mr-1" />
                       Editar
@@ -545,7 +548,7 @@ await webhookService.loadInitialData();
                   </>
                 ) : (
                   <div className="text-sm text-muted-foreground">
-                    {webhookService.isConfigured() ? (
+                    {isWebhookConfigured ? (
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-green-500"></div>
                         <span>Webhook configurado</span>
@@ -650,7 +653,7 @@ await webhookService.loadInitialData();
                   <Button 
                     onClick={generateNewPassword} 
                     className="flex-1 bg-red-600 hover:bg-red-700"
-                    disabled={isGeneratingPassword || !webhookService.isConfigured()}
+                    disabled={isGeneratingPassword || !isWebhookConfigured}
                   >
                     {isGeneratingPassword ? (
                       <>Generando...</>
@@ -1957,7 +1960,7 @@ await webhookService.loadInitialData();
                       <div className="flex gap-2">
                         <Button 
                           onClick={generateNewPassword}
-                          disabled={isGeneratingPassword || !webhookService.isConfigured()}
+                          disabled={isGeneratingPassword || !isWebhookConfigured}
                           className="bg-red-600 hover:bg-red-700"
                         >
                           {isGeneratingPassword ? (
@@ -1989,7 +1992,7 @@ await webhookService.loadInitialData();
                       <div>
                         <div className="flex items-center justify-between mb-2">
                           <label className="block text-sm font-medium">URL del Webhook</label>
-                          {!isEditingWebhook && webhookService.isConfigured() && (
+                          {!isEditingWebhook && isWebhookConfigured && (
                             <Button onClick={handleEditWebhook} size="sm" variant="ghost">
                               <Edit3 className="w-4 h-4 mr-1" />
                               Editar
@@ -2012,7 +2015,7 @@ await webhookService.loadInitialData();
                           </>
                         ) : (
                           <div className="p-3 rounded-lg bg-muted">
-                            {webhookService.isConfigured() ? (
+                            {isWebhookConfigured ? (
                               <div className="flex items-center gap-2">
                                 <div className="w-3 h-3 rounded-full bg-green-500"></div>
                                 <span className="text-sm">Webhook configurado correctamente</span>
@@ -2050,13 +2053,19 @@ await webhookService.loadInitialData();
                         </>
                       ) : (
                         <div className="flex gap-2">
-                          {!webhookService.isConfigured() && (
+                          {!isWebhookConfigured && (
                             <Button onClick={handleEditWebhook} variant="outline" className="flex-1">
                               <Settings className="w-4 h-4 mr-2" />
                               Configurar Webhook
                             </Button>
                           )}
-                          {webhookService.getBackupInfo().hasBackup && (
+                          {(() => {
+                             const [hasBackup, setHasBackup] = React.useState(false);
+                             React.useEffect(() => {
+                               webhookService.getBackupInfo().then(info => setHasBackup(info.hasBackup));
+                             }, []);
+                             return hasBackup;
+                           })() && (
                             <Button onClick={handleRecoverWebhook} variant="outline" className="flex-1">
                               🔄 Recuperar Backup
                             </Button>
@@ -2119,7 +2128,7 @@ await webhookService.loadInitialData();
                                 onClick={handleGenerateRecoveryCode} 
                                 variant="outline" 
                                 size="sm"
-                                disabled={!webhookService.isConfigured()}
+                                disabled={!isWebhookConfigured}
                               >
                                 🔑 Generar Código
                               </Button>
@@ -2166,7 +2175,7 @@ await webhookService.loadInitialData();
                                 onClick={handleExportConfig} 
                                 variant="outline" 
                                 size="sm"
-                                disabled={!webhookService.isConfigured()}
+                                disabled={!isWebhookConfigured}
                               >
                                 📤 Exportar
                               </Button>
@@ -2241,15 +2250,12 @@ await webhookService.loadInitialData();
                           <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
                           <p>El webhook se guarda automáticamente y se crea un backup de seguridad</p>
                         </div>
-                        {(() => {
-                          const backupInfo = webhookService.getBackupInfo();
-                          return backupInfo.hasBackup ? (
-                            <div className="flex items-start gap-2">
-                              <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
-                              <p>Backup disponible desde: {new Date(backupInfo.created || '').toLocaleString('es-ES')}</p>
-                            </div>
-                          ) : null;
-                        })()}
+                        {backupInfo.hasBackup && (
+                          <div className="flex items-start gap-2">
+                            <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
+                            <p>Backup disponible desde: {new Date(backupInfo.created || '').toLocaleString('es-ES')}</p>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
