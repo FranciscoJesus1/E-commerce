@@ -38,10 +38,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isGeneratingPassword, setIsGeneratingPassword] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState(webhookService.getWebhookUrl());
+  const [webhookUrl, setWebhookUrl] = useState('');
   const [webhookTestResult, setWebhookTestResult] = useState<string | null>(null);
-  const [isEditingWebhook, setIsEditingWebhook] = useState(!webhookService.isConfigured());
-  const [tempWebhookUrl, setTempWebhookUrl] = useState(webhookService.getWebhookUrl());
+  const [isEditingWebhook, setIsEditingWebhook] = useState(true);
+  const [tempWebhookUrl, setTempWebhookUrl] = useState('');
   const [showRecoveryOptions, setShowRecoveryOptions] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState('');
   const [importData, setImportData] = useState('');
@@ -57,7 +57,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const generateNewPassword = async () => {
-    if (!webhookService.isConfigured()) {
+    const isConfigured = await webhookService.isConfigured();
+    if (!isConfigured) {
       setLoginError('Debe configurar el webhook de Discord primero');
       return;
     }
@@ -74,17 +75,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const saveWebhookUrl = () => {
+  const saveWebhookUrl = async () => {
     if (isEditingWebhook) {
       if (tempWebhookUrl.trim()) {
-        webhookService.setWebhookUrl(tempWebhookUrl.trim(), true);
-        setWebhookUrl(tempWebhookUrl.trim());
-        setIsEditingWebhook(false);
-        setWebhookTestResult('✅ Webhook guardado correctamente y backup creado');
+        try {
+          const success = await webhookService.setWebhookUrl(tempWebhookUrl.trim(), true);
+          if (success) {
+            setWebhookUrl(tempWebhookUrl.trim());
+            setIsEditingWebhook(false);
+            setWebhookTestResult('✅ Webhook guardado correctamente en la base de datos');
+          } else {
+            setWebhookTestResult('❌ Error guardando el webhook en la base de datos');
+          }
+        } catch (error) {
+          setWebhookTestResult('❌ Error de conexión con la base de datos');
+        }
+      } else {
+        setWebhookTestResult('❌ Debe ingresar una URL de webhook válida');
       }
     } else {
-      webhookService.setWebhookUrl(webhookUrl, true);
-      setWebhookTestResult('✅ URL del webhook guardada exitosamente');
+      // Este caso no debería ocurrir normalmente, pero por seguridad
+      if (webhookUrl.trim()) {
+        try {
+          const success = await webhookService.setWebhookUrl(webhookUrl.trim(), true);
+          if (success) {
+            setWebhookTestResult('✅ URL del webhook guardada exitosamente');
+          } else {
+            setWebhookTestResult('❌ Error guardando el webhook');
+          }
+        } catch (error) {
+          setWebhookTestResult('❌ Error de conexión con la base de datos');
+        }
+      } else {
+        setWebhookTestResult('❌ URL del webhook vacía');
+      }
     }
     setTimeout(() => setWebhookTestResult(null), 3000);
   };
@@ -99,13 +123,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
 
     try {
       // Temporalmente usar la URL para probar
-      const originalUrl = webhookService.getWebhookUrl();
-      webhookService.setWebhookUrl(urlToTest.trim(), false);
+      const originalUrl = await webhookService.getWebhookUrl();
+      await webhookService.setWebhookUrl(urlToTest.trim(), false);
       const success = await webhookService.sendTestMessage();
       
       // Restaurar URL original si estamos en modo edición
       if (isEditingWebhook) {
-        webhookService.setWebhookUrl(originalUrl, false);
+        await webhookService.setWebhookUrl(originalUrl, false);
       }
       
       setWebhookTestResult(success ? '✅ Webhook funcionando correctamente' : '❌ Error enviando mensaje de test');
@@ -125,96 +149,126 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     setIsEditingWebhook(false);
   };
 
-  const handleRecoverWebhook = () => {
-    const recoveredUrl = webhookService.recoverWebhookFromBackup();
-    if (recoveredUrl) {
-      if (isEditingWebhook) {
-        setTempWebhookUrl(recoveredUrl);
+  const handleRecoverWebhook = async () => {
+    try {
+      const recoveredUrl = await webhookService.recoverWebhookFromBackup();
+      if (recoveredUrl) {
+        if (isEditingWebhook) {
+          setTempWebhookUrl(recoveredUrl);
+        } else {
+          const success = await webhookService.setWebhookUrl(recoveredUrl, false);
+          if (success) {
+            setWebhookUrl(recoveredUrl);
+          }
+        }
+        setWebhookTestResult('✅ Webhook recuperado desde backup');
       } else {
-        setWebhookUrl(recoveredUrl);
-        webhookService.setWebhookUrl(recoveredUrl, false);
+        setWebhookTestResult('❌ No se encontró backup del webhook');
       }
-      setWebhookTestResult('✅ Webhook recuperado desde backup');
-    } else {
-      setWebhookTestResult('❌ No se encontró backup del webhook');
+    } catch (error) {
+      setWebhookTestResult('❌ Error recuperando el webhook desde backup');
     }
     setTimeout(() => setWebhookTestResult(null), 3000);
   };
 
-  const handleGenerateRecoveryCode = () => {
-    if (!webhookService.isConfigured()) {
+  const handleGenerateRecoveryCode = async () => {
+    const isConfigured = await webhookService.isConfigured();
+    if (!isConfigured) {
       setWebhookTestResult('❌ Debe configurar el webhook primero');
       setTimeout(() => setWebhookTestResult(null), 3000);
       return;
     }
-    const code = webhookService.generateRecoveryCode();
-    setGeneratedRecoveryCode(code);
-    setWebhookTestResult('✅ Código de recuperación generado');
+    try {
+      const code = await webhookService.generateRecoveryCode();
+      setGeneratedRecoveryCode(code);
+      setWebhookTestResult('✅ Código de recuperación generado y guardado');
+    } catch (error) {
+      setWebhookTestResult('❌ Error generando código de recuperación');
+    }
     setTimeout(() => setWebhookTestResult(null), 3000);
   };
 
-  const handleRecoverWithCode = () => {
+  const handleRecoverWithCode = async () => {
     if (!recoveryCode.trim()) {
       setWebhookTestResult('❌ Ingrese un código de recuperación');
       setTimeout(() => setWebhookTestResult(null), 3000);
       return;
     }
     
-    const success = webhookService.recoverWithCode(recoveryCode.trim());
-    if (success) {
-      setWebhookUrl(webhookService.getWebhookUrl());
-      setWebhookTestResult('✅ Webhook recuperado con código');
-      setRecoveryCode('');
-      setShowRecoveryOptions(false);
-    } else {
-      setWebhookTestResult('❌ Código de recuperación inválido');
+    try {
+      const success = await webhookService.recoverWithCode(recoveryCode.trim());
+      if (success) {
+        const currentUrl = await webhookService.getWebhookUrl();
+        setWebhookUrl(currentUrl);
+        setWebhookTestResult('✅ Webhook recuperado con código');
+        setRecoveryCode('');
+        setShowRecoveryOptions(false);
+      } else {
+        setWebhookTestResult('❌ Código de recuperación inválido');
+      }
+    } catch (error) {
+      setWebhookTestResult('❌ Error recuperando con código');
     }
     setTimeout(() => setWebhookTestResult(null), 3000);
   };
 
-  const handleExportConfig = () => {
-    if (!webhookService.isConfigured()) {
+  const handleExportConfig = async () => {
+    const isConfigured = await webhookService.isConfigured();
+    if (!isConfigured) {
       setWebhookTestResult('❌ Debe configurar el webhook primero');
       setTimeout(() => setWebhookTestResult(null), 3000);
       return;
     }
-    const exportData = webhookService.exportConfiguration();
-    navigator.clipboard.writeText(exportData).then(() => {
-      setWebhookTestResult('✅ Configuración copiada al portapapeles');
-    }).catch(() => {
-      setWebhookTestResult('✅ Configuración exportada (revise la consola)');
-      console.log('Configuración exportada:', exportData);
-    });
+    try {
+      const exportData = await webhookService.exportConfiguration();
+      navigator.clipboard.writeText(exportData).then(() => {
+        setWebhookTestResult('✅ Configuración copiada al portapapeles');
+      }).catch(() => {
+        setWebhookTestResult('✅ Configuración exportada (revise la consola)');
+        console.log('Configuración exportada:', exportData);
+      });
+    } catch (error) {
+      setWebhookTestResult('❌ Error exportando configuración');
+    }
     setTimeout(() => setWebhookTestResult(null), 3000);
   };
 
-  const handleImportConfig = () => {
+  const handleImportConfig = async () => {
     if (!importData.trim()) {
       setWebhookTestResult('❌ Ingrese los datos de configuración');
       setTimeout(() => setWebhookTestResult(null), 3000);
       return;
     }
     
-    const success = webhookService.importConfiguration(importData.trim());
-    if (success) {
-      setWebhookUrl(webhookService.getWebhookUrl());
-      setWebhookTestResult('✅ Configuración importada exitosamente');
-      setImportData('');
-      setShowRecoveryOptions(false);
-    } else {
-      setWebhookTestResult('❌ Datos de configuración inválidos');
-    }
-    setTimeout(() => setWebhookTestResult(null), 3000);
+    try {
+      const success = await webhookService.importConfiguration(importData.trim());
+      if (success) {
+        const currentUrl = await webhookService.getWebhookUrl();
+        setWebhookUrl(currentUrl);
+        setWebhookTestResult('✅ Configuración importada exitosamente');
+        setImportData('');
+        setShowRecoveryOptions(false);
+      } else {
+         setWebhookTestResult('❌ Datos de configuración inválidos');
+       }
+     } catch (error) {
+       setWebhookTestResult('❌ Error importando configuración');
+     }
+     setTimeout(() => setWebhookTestResult(null), 3000);
   };
 
-  const handleEmergencyReset = () => {
+  const handleEmergencyReset = async () => {
     if (confirm('⚠️ ADVERTENCIA: Esto eliminará TODA la configuración del webhook y no se puede deshacer. ¿Está seguro?')) {
-      webhookService.emergencyReset();
-      setWebhookUrl('');
-      setTempWebhookUrl('');
-      setIsEditingWebhook(false);
-      setShowRecoveryOptions(false);
-      setWebhookTestResult('✅ Sistema reiniciado completamente');
+      try {
+        await webhookService.emergencyReset();
+        setWebhookUrl('');
+        setTempWebhookUrl('');
+        setIsEditingWebhook(false);
+        setShowRecoveryOptions(false);
+        setWebhookTestResult('✅ Configuración eliminada completamente');
+      } catch (error) {
+        setWebhookTestResult('❌ Error eliminando configuración');
+      }
       setTimeout(() => setWebhookTestResult(null), 3000);
     }
   };
@@ -254,6 +308,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     setEditingEvents(events);
   }, [events]);
+
+  // Load webhook from database on component mount
+  useEffect(() => {
+    const loadWebhook = async () => {
+      try {
+        // Initialize webhook service and load data
+// Initialize webhook service by loading initial data
+await webhookService.loadInitialData();
+        const currentUrl = await webhookService.getWebhookUrl();
+        setWebhookUrl(currentUrl);
+        setTempWebhookUrl(currentUrl);
+        const isConfigured = await webhookService.isConfigured();
+        setIsEditingWebhook(!isConfigured);
+      } catch (error) {
+        console.error('Error loading webhook from database:', error);
+      }
+    };
+    loadWebhook();
+  }, []);
   
   const tabs = [
     { id: 'player', label: 'Datos del Jugador', icon: '👤' },
